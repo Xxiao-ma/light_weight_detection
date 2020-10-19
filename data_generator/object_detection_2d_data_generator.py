@@ -459,7 +459,7 @@ class DataGenerator:
             self.labels = None
             self.eval_neutral = None
             annotations_dirs = [None] * len(images_dirs)
-
+        names =set()
         for images_dir, image_set_filename, annotations_dir in zip(images_dirs, image_set_filenames, annotations_dirs):
             # Read the image set file that so that we know all the IDs of all the images to be included in the dataset.
             with open(image_set_filename) as f:
@@ -472,7 +472,7 @@ class DataGenerator:
             # Loop over all images in this dataset.
             for image_id in it:
 
-                filename = '{}'.format(image_id) + '.jpg'
+                filename = '{}'.format(image_id) + '.pgm'#改变为pgm
                 self.filenames.append(os.path.join(images_dir, filename))
 
                 if not annotations_dir is None:
@@ -486,10 +486,11 @@ class DataGenerator:
                     boxes = [] # We'll store all boxes for this image here.
                     eval_neutr = [] # We'll store whether a box is annotated as "difficult" here.
                     objects = soup.find_all('object') # Get a list of all objects in this image.
-
                     # Parse the data for each object.
                     for obj in objects:
                         class_name = obj.find('name', recursive=False).text
+                        names.add(class_name)
+                        #print(class_name)
                         class_id = self.classes.index(class_name)
                         # Check whether this class is supposed to be included in the dataset.
                         if (not self.include_classes == 'all') and (not class_id in self.include_classes): continue
@@ -522,10 +523,16 @@ class DataGenerator:
                         boxes.append(box)
                         if difficult: eval_neutr.append(True)
                         else: eval_neutr.append(False)
-
+                    #f = open('./test.txt','w')
+                    #f.write(str(names))
+                    #f.close()
+ 
+                    #print(names)
                     self.labels.append(boxes)
                     self.eval_neutral.append(eval_neutr)
-
+        #f = open('./test.txt','w')
+        #f.write(str(names))
+        #f.close()
         self.dataset_size = len(self.filenames)
         self.dataset_indices = np.arange(self.dataset_size, dtype=np.int32)
         if self.load_images_into_memory:
@@ -860,15 +867,7 @@ class DataGenerator:
                 is always a tuple that contains the outputs specified in this set and only those. If an output is not available,
                 it will be `None`. The output tuple can contain the following outputs according to the specified keyword strings:
                 * 'processed_images': An array containing the processed images. Will always be in the outputs, so it doesn't
-                    matter whether or not you include this keyword in the set.
-                * 'encoded_labels': The encoded labels tensor. Will always be in the outputs if a label encoder is given,
-                    so it doesn't matter whether or not you include this keyword in the set if you pass a label encoder.
-                * 'matched_anchors': Only available if `labels_encoder` is an `SSDInputEncoder` object. The same as 'encoded_labels',
-                    but containing anchor box coordinates for all matched anchor boxes instead of ground truth coordinates.
-                    This can be useful to visualize what anchor boxes are being matched to each ground truth box. Only available
-                    in training mode.
-                * 'processed_labels': The processed, but not yet encoded labels. This is a list that contains for each
-                    batch image a Numpy array with all ground truth boxes for that image. Only available if ground truth is available.
+                    matter whether or not yolabelsy with all ground truth boxes for that image. Only available if ground truth is available.
                 * 'filenames': A list containing the file names (full paths) of the images in the batch.
                 * 'image_ids': A list containing the integer IDs of the images in the batch. Only available if there
                     are image IDs available.
@@ -996,7 +995,12 @@ class DataGenerator:
             # 3) Else, if we have neither of the above, we'll have to load the individual image
             #    files from disk.
             batch_indices = self.dataset_indices[current:current+batch_size]
+            print("batch_indices")
+            print(batch_indices)
+            print("shape of self.images")
             if not (self.images is None):
+                print(self.images.shape)
+
                 for i in batch_indices:
                     batch_X.append(self.images[i])
                 if not (self.filenames is None):
@@ -1015,7 +1019,8 @@ class DataGenerator:
                 for filename in batch_filenames:
                     with Image.open(filename) as image:
                         batch_X.append(np.array(image, dtype=np.uint8))
-
+            print("This is image:"+str(batch_filenames))
+            print()
             # Get the labels for this batch (if there are any).
             if not (self.labels is None):
                 batch_y = deepcopy(self.labels[current:current+batch_size])
@@ -1048,12 +1053,17 @@ class DataGenerator:
             batch_inverse_transforms = []
 
             for i in range(len(batch_X)):
-
+                
+                if self.labels is None:
+                    print("this image "+str(i)+"has no labels")
                 if not (self.labels is None):
+                    
                     # Convert the labels for this image to an array (in case they aren't already).
                     batch_y[i] = np.array(batch_y[i])
                     # If this image has no ground truth boxes, maybe we don't want to keep it in the batch.
                     if (batch_y[i].size == 0) and not keep_images_without_gt:
+                        print("the image "+str(i)+" has no ground truth")
+
                         batch_items_to_remove.append(i)
                         batch_inverse_transforms.append([])
                         continue
@@ -1074,6 +1084,7 @@ class DataGenerator:
                                 batch_X[i], batch_y[i] = transform(batch_X[i], batch_y[i])
 
                             if batch_X[i] is None: # In case the transform failed to produce an output image, which is possible for some random transforms.
+                                print("the image "+str(i)+" in batch is empty")
                                 batch_items_to_remove.append(i)
                                 batch_inverse_transforms.append([])
                                 continue
@@ -1109,6 +1120,8 @@ class DataGenerator:
                         elif degenerate_box_handling == 'remove':
                             batch_y[i] = box_filter(batch_y[i])
                             if (batch_y[i].size == 0) and not keep_images_without_gt:
+                                print("the image "+str(i)+" has label , whose length is 0")
+
                                 batch_items_to_remove.append(i)
 
             #########################################################################################
@@ -1132,6 +1145,9 @@ class DataGenerator:
             # CAUTION: Converting `batch_X` into an array will result in an empty batch if the images have varying sizes
             #          or varying numbers of channels. At this point, all images must have the same size and the same
             #          number of channels.
+            print("this is the batch size")
+            print(len(batch_X))
+            #print(batch_X)
             batch_X = np.array(batch_X)
             if (batch_X.size == 0):
                 raise DegenerateBatchError("You produced an empty batch. This might be because the images in the batch vary " +
